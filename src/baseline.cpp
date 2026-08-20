@@ -6,6 +6,7 @@
 #include <iomanip>
 #include <iostream>
 #include <limits>
+#include <new>
 #include <stdexcept>
 #include <string>
 #include <string_view>
@@ -201,7 +202,11 @@ void aggregate_with_getline(const std::string& input_path, StationMap& stations)
 
 #ifdef ONEBRC_BUFFERED_IO
 void aggregate_with_buffer(const std::string& input_path, StationMap& stations) {
+#ifdef ONEBRC_BUFFER_SIZE_BYTES
+    constexpr std::size_t chunk_size = ONEBRC_BUFFER_SIZE_BYTES;
+#else
     constexpr std::size_t chunk_size = 4U * 1024U * 1024U;
+#endif
     constexpr std::size_t maximum_record_size = 108;
 
     std::ifstream input(input_path, std::ios::binary);
@@ -358,7 +363,12 @@ void aggregate_with_mapping(const std::string& input_path, StationMap& stations)
 
 int run(const std::string& input_path) {
     StationMap stations;
+#ifdef ONEBRC_BOUNDED_MEMORY
+    stations.max_load_factor(0.8F);
+    stations.reserve(10'000);
+#else
     stations.reserve(512);
+#endif
 
 #ifdef ONEBRC_MMAP
     aggregate_with_mapping(input_path, stations);
@@ -368,17 +378,32 @@ int run(const std::string& input_path) {
     aggregate_with_getline(input_path, stations);
 #endif
 
+#ifdef ONEBRC_BOUNDED_MEMORY
+    std::vector<const StationMap::value_type*> sorted;
+    sorted.reserve(stations.size());
+    for (const auto& station : stations) {
+        sorted.push_back(&station);
+    }
+    std::sort(sorted.begin(), sorted.end(), [](const auto* left, const auto* right) {
+        return unsigned_byte_less(left->first, right->first);
+    });
+#else
     std::vector<std::pair<std::string, Stats>> sorted(stations.begin(), stations.end());
     std::sort(sorted.begin(), sorted.end(), [](const auto& left, const auto& right) {
         return unsigned_byte_less(left.first, right.first);
     });
+#endif
 
     std::cout << '{';
     for (std::size_t index = 0; index < sorted.size(); ++index) {
         if (index != 0) {
             std::cout << ", ";
         }
+#ifdef ONEBRC_BOUNDED_MEMORY
+        const auto& [name, stats] = *sorted[index];
+#else
         const auto& [name, stats] = sorted[index];
+#endif
         std::cout << name << '=';
         print_temperature(std::cout, stats.minimum);
         std::cout << '/';
@@ -407,6 +432,10 @@ int main(int argc, char* argv[]) {
 
     try {
         return run(argv[1]);
+    }
+    catch (const std::bad_alloc&) {
+        std::cerr << "error: memory allocation failed\n";
+        return 3;
     }
     catch (const std::exception& error) {
         std::cerr << "error: " << error.what() << '\n';

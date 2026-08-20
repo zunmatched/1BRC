@@ -49,6 +49,12 @@ Stage 4 provides two single-threaded I/O variants with the same parser and aggre
 
 The buffered target streams through a 4 MiB buffer and preserves partial records across reads. The Windows-only mapped target uses `CreateFileMapping` and accepts UTF-8 paths. Current warm-cache results favor the buffered target; both remain available for later experiments.
 
+`onebrc_bounded_memory.exe` is the stability-first buffered variant. It reserves the documented 10,000-station bound up front, sorts pointers rather than copied entries, and reports allocation exhaustion as exit code 3:
+
+```powershell
+.\build\onebrc_bounded_memory.exe .\tests\fixtures\sample.txt
+```
+
 Input records are UTF-8 `station;temperature` lines. Temperatures range from `-99.9` to `99.9`; aggregates are stored as integer tenths and stations are sorted by UTF-8 bytes. Errors go to stderr with a non-zero exit code.
 
 ## Generate datasets
@@ -75,6 +81,15 @@ Benchmark Release builds with at least five measured warm-cache runs:
 ```
 
 The script performs one unmeasured warm-up, reports the median and MiB/s, captures basic hardware metadata, and writes `results/baseline.local.md`. That local report is ignored until reviewed and renamed. Cold-cache numbers must be recorded separately after reboot because Windows has no reliable unprivileged cache-eviction interface.
+
+Measure process memory separately from the Windows filesystem cache:
+
+```powershell
+.\scripts\measure-memory.ps1 `
+  -InputPath .\data\measurements-100m-random.txt
+```
+
+Windows CTest also runs the solution inside a Job Object: the production target must succeed under 32 MiB, while a test-only 64 MiB-buffer build must catch allocation failure under the same limit and return exit code 3.
 
 ## Optimization roadmap
 

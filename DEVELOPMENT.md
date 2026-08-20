@@ -18,17 +18,20 @@ Input size must not determine heap size. Implementations may stream or map the i
 - Single-threaded comparison of `getline`, 4 MiB buffered I/O, and Windows file mapping.
 - Reproducible 10M and 100M warm-cache benchmarks.
 
-## Next: Memory Resilience
+## Current: Memory Resilience
 
-Before adding threads, establish and test a memory contract:
+Completed stability controls:
 
-- Reserve capacity deliberately for the documented maximum of 10,000 stations and benchmark the cache-locality tradeoff.
-- Sort pointers to station entries instead of copying keys and aggregates.
-- Catch `std::bad_alloc` separately and return a documented exit code with a stable stderr message.
-- Record peak working set, private bytes, virtual size, and configured buffer size.
-- Add Windows Job Object tests that run the solution under explicit process-memory limits and verify both successful and controlled-failure paths.
-- Demonstrate that peak private memory remains approximately constant across 1M, 10M, 100M, and 1B inputs.
-- Run the complete 1B dataset only after these checks pass.
+- The production buffer is fixed at 4 MiB and the input is never materialized in heap memory.
+- The station map reserves the documented 10,000-key bound before processing.
+- Output sorting stores pointers to map entries instead of copying names and aggregates.
+- `std::bad_alloc` produces a stable diagnostic and exit code 3.
+- Windows Job Object tests cover success and deterministic allocation failure under a 32 MiB process limit.
+- `scripts/measure-memory.ps1` records peak working set, private bytes, and virtual bytes for the child solution process.
+
+Remaining before adding threads:
+
+- Run the complete 1B input and confirm byte-identical output plus the same bounded-memory behavior.
 
 Acceptance requires no uncaught allocation failures, no input-sized heap allocation, byte-identical output, and documented peak-memory measurements.
 
@@ -40,4 +43,3 @@ Acceptance requires no uncaught allocation failures, no input-sized heap allocat
 4. Produce the final 1B benchmark, architecture explanation, limitations, and résumé-ready results.
 
 Every milestone is committed separately and must include correctness tests, stability evidence, and same-machine before/after measurements.
-
