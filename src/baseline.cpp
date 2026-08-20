@@ -34,6 +34,40 @@ struct Stats {
 };
 
 [[nodiscard]] std::int32_t parse_temperature(const std::string& text, std::uint64_t line_number) {
+#ifdef ONEBRC_INTEGER_PARSER
+    const auto invalid = [line_number]() {
+        throw std::runtime_error("invalid temperature on line " + std::to_string(line_number));
+    };
+
+    std::size_t index = 0;
+    bool negative = false;
+    if (!text.empty() && text.front() == '-') {
+        negative = true;
+        ++index;
+    }
+    const auto digits_before_decimal = text.size() - index >= 2 ? text.size() - index - 2 : 0;
+    if (digits_before_decimal < 1 || digits_before_decimal > 2 || text[text.size() - 2] != '.') {
+        invalid();
+    }
+
+    std::int32_t value = 0;
+    for (std::size_t digit = 0; digit < digits_before_decimal; ++digit) {
+        const char character = text[index + digit];
+        if (character < '0' || character > '9') {
+            invalid();
+        }
+        value = value * 10 + (character - '0');
+    }
+    const char fractional = text.back();
+    if (fractional < '0' || fractional > '9') {
+        invalid();
+    }
+    value = value * 10 + (fractional - '0');
+    if (value > 999) {
+        invalid();
+    }
+    return negative ? -value : value;
+#else
     std::size_t parsed = 0;
     double value = 0.0;
     try {
@@ -48,6 +82,7 @@ struct Stats {
         throw std::runtime_error("invalid temperature on line " + std::to_string(line_number));
     }
     return static_cast<std::int32_t>(std::llround(value * 10.0));
+#endif
 }
 
 [[nodiscard]] std::int64_t rounded_mean_tenths(const Stats& stats) {

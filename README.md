@@ -26,6 +26,12 @@ The CLI accepts exactly one input path and writes only the canonical result to s
 .\build\onebrc_baseline.exe .\tests\fixtures\sample.txt
 ```
 
+`onebrc_integer_parser.exe` exposes the first isolated optimization. It uses the same aggregation path and output contract, replacing only general-purpose `std::stod` parsing with a fixed-format integer parser:
+
+```powershell
+.\build\onebrc_integer_parser.exe .\tests\fixtures\sample.txt
+```
+
 Input records are UTF-8 `station;temperature` lines. Temperatures range from `-99.9` to `99.9`; aggregates are stored as integer tenths and stations are sorted by UTF-8 bytes. Errors go to stderr with a non-zero exit code.
 
 ## Generate datasets
@@ -47,6 +53,8 @@ Benchmark Release builds with at least five measured warm-cache runs:
 
 ```powershell
 .\scripts\benchmark.ps1 -InputPath .\data\measurements-1m-random.txt -Runs 5
+.\scripts\benchmark.ps1 -InputPath .\data\measurements-1m-random.txt `
+  -Executable .\build\onebrc_integer_parser.exe -Runs 5
 ```
 
 The script performs one unmeasured warm-up, reports the median and MiB/s, captures basic hardware metadata, and writes `results/baseline.local.md`. That local report is ignored until reviewed and renamed. Cold-cache numbers must be recorded separately after reboot because Windows has no reliable unprivileged cache-eviction interface.
@@ -54,10 +62,10 @@ The script performs one unmeasured warm-up, reports the median and MiB/s, captur
 ## Optimization roadmap
 
 1. Baseline: `getline`, standard parsing, and `unordered_map`.
-2. Replace general numeric parsing and per-row allocations.
-3. Compare buffered I/O with Windows file mapping.
-4. Add newline-safe chunking and thread-local aggregation.
-5. Use profiler evidence to evaluate a custom hash table, branch reduction, or SIMD.
+2. Integer parser: replace general numeric parsing while retaining the baseline allocation behavior.
+3. Remove per-row allocations and temporary substrings.
+4. Compare buffered I/O with Windows file mapping.
+5. Add newline-safe chunking and thread-local aggregation.
+6. Use profiler evidence to evaluate a custom hash table, branch reduction, or SIMD.
 
 Each version must pass the baseline fixture and differential tests before its performance is reported. Benchmark results from different hardware are not directly comparable.
-

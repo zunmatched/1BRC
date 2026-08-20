@@ -53,7 +53,7 @@ $timestamp = Get-Date -Format 'yyyy-MM-dd HH:mm:ss K'
 $sampleText = ($samples | ForEach-Object { $_.ToString('F6', [Globalization.CultureInfo]::InvariantCulture) }) -join ', '
 
 $markdown = @"
-# Local Baseline Benchmark
+# Local Benchmark
 
 - Timestamp: $timestamp
 - Cache mode: $CacheMode (one unmeasured warm-up)
