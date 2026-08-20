@@ -46,8 +46,8 @@ The parallel target caps execution at 32 threads. Its resident working set is bo
 
 Next milestones:
 
-1. Repeat scaling measurements and identify the saturation point under controlled system load.
-2. Evaluate a custom hash table, branch reduction, or SIMD only when profiling identifies the relevant bottleneck.
+1. Use controlled parser/hash experiments to separate their costs; process counters show CPU occupancy saturating near 21 of 24 logical cores at 24–32 threads.
+2. Evaluate a custom hash table, branch reduction, or SIMD only when an isolated experiment identifies the relevant bottleneck.
 3. Produce the final architecture explanation, limitations, and résumé-ready results.
 
 Every milestone is committed separately and must include correctness tests, stability evidence, and same-machine before/after measurements.
