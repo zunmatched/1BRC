@@ -17,6 +17,7 @@ Input size must not determine heap size. Implementations may stream or map the i
 - Allocation-free hot-loop lookup for known stations.
 - Single-threaded comparison of `getline`, 4 MiB buffered I/O, and Windows file mapping.
 - Reproducible 10M and 100M warm-cache benchmarks.
+- Complete 1B validation: byte-identical output against the portable baseline with 5.05 MiB peak committed memory.
 
 ## Current: Memory Resilience
 
@@ -31,9 +32,8 @@ Completed stability controls:
 - The Job runner owns Windows handles through move-only RAII, checks API failures, and enforces a 10-minute timeout.
 - `scripts/measure-memory.ps1` records OS-maintained peak working set, committed/pagefile usage, and virtual bytes for the child solution process.
 
-Remaining before adding threads:
+Remaining validation work:
 
-- Run the complete 1B input and confirm byte-identical output plus the same bounded-memory behavior.
 - Run AddressSanitizer and UndefinedBehaviorSanitizer with a toolchain that provides their runtimes; the installed Strawberry MinGW distribution does not include `libasan` or `libubsan`.
 
 Acceptance requires no uncaught allocation failures, no input-sized heap allocation, byte-identical output, and documented peak-memory measurements.

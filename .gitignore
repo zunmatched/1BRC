@@ -3,6 +3,7 @@
 /data/
 /benchmark-output/
 /results/*.local.md
+/results/*.local.txt
 *.exe
 *.pdb
 measurements.txt

@@ -27,13 +27,15 @@ Environment: AMD Ryzen AI 9 HX 370, 24 logical processors, 31.1 GiB RAM, Windows
 
 After correcting the measurement method, a 100M run reported 9.17 MiB peak working set, 5.04 MiB OS-maintained peak committed usage, and 4,158.50 MiB peak virtual address space.
 
+The complete 1B random dataset contained 1,000,000,000 rows and occupied 13,712,587,980 bytes (12.77 GiB). The bounded implementation completed it in 28.605653 seconds at 457.16 MiB/s, with a 9.14 MiB peak working set, 5.05 MiB peak committed usage, and 4,158.50 MiB peak virtual address space. Its near-identical committed-memory result at 100M and 1B rows confirms that heap demand does not scale with input size.
+
 From 1M to 100M rows, sampled private bytes changed by about 0.01 MiB. Exercising all 10,000 station keys increased sampled private memory by less than 1 MiB. The large but stable virtual-size figure is address space reserved by the Windows/MinGW process and is not resident physical memory.
 
 ## Performance and correctness
 
 On the 100M random dataset, the bounded variant produced byte-identical output to `onebrc_buffered_io`. Its seven-run warm-cache median was 2.793150 seconds (468.21 MiB/s), versus 2.794999 seconds (467.90 MiB/s) before the bounded-memory changes. The stability controls introduced no measurable regression in this run.
 
-The remaining acceptance item is a complete 1B run with the same output, memory, and controlled-failure checks.
+On the 1B dataset, the portable baseline completed in 554.815705 seconds. Its 391-byte captured output was byte-for-byte identical to the bounded implementation (SHA-256 `64F750BB922E5323E9ACD348442B19488C577E8C022CBCDA493E89799FF13E16`). The bounded run was 19.40 times faster in this correctness comparison. This completes the 1B correctness and bounded-memory acceptance item.
 
 ## Defensive limits
 
