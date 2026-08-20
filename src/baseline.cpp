@@ -27,6 +27,15 @@
 
 namespace {
 
+constexpr std::size_t maximum_station_count = 10'000;
+
+enum class ExitCode : int {
+    success = 0,
+    failure = 1,
+    usage = 2,
+    allocation_failure = 3,
+};
+
 struct Stats {
     std::int32_t minimum = std::numeric_limits<std::int32_t>::max();
     std::int32_t maximum = std::numeric_limits<std::int32_t>::min();
@@ -124,9 +133,14 @@ void process_record(const std::string& record, StationMap& stations, std::uint64
 #endif
 
 [[nodiscard]] std::int64_t rounded_mean_tenths(const Stats& stats) {
-    // The canonical 1BRC rule is equivalent to Java Math.round(): floor(x + 0.5).
-    const auto mean = static_cast<long double>(stats.sum) / static_cast<long double>(stats.count);
-    return static_cast<std::int64_t>(std::floor(mean + 0.5L));
+    // Exact floor(sum / count + 0.5), including negative half ties toward positive infinity.
+    const auto denominator = static_cast<std::int64_t>(stats.count * 2U);
+    const auto numerator = stats.sum * 2 + static_cast<std::int64_t>(stats.count);
+    auto quotient = numerator / denominator;
+    if (numerator % denominator < 0) {
+        --quotient;
+    }
+    return quotient;
 }
 
 void print_temperature(std::ostream& output, std::int64_t tenths) {
@@ -160,6 +174,12 @@ void process_record(std::string_view record, StationMap& stations, std::uint64_t
     const auto station_name = record.substr(0, separator);
     auto station = stations.find(station_name);
     if (station == stations.end()) {
+#ifdef ONEBRC_BOUNDED_MEMORY
+        if (stations.size() == maximum_station_count) {
+            throw std::runtime_error("station count exceeds limit of " +
+                                     std::to_string(maximum_station_count));
+        }
+#endif
         station = stations.emplace(std::string(station_name), Stats{}).first;
     }
     station->second.add(temperature);
@@ -365,7 +385,7 @@ int run(const std::string& input_path) {
     StationMap stations;
 #ifdef ONEBRC_BOUNDED_MEMORY
     stations.max_load_factor(0.8F);
-    stations.reserve(10'000);
+    stations.reserve(maximum_station_count);
 #else
     stations.reserve(512);
 #endif
@@ -421,13 +441,13 @@ int main(int argc, char* argv[]) {
 #ifdef _WIN32
     if (_setmode(_fileno(stdout), _O_BINARY) == -1) {
         std::cerr << "error: cannot configure stdout\n";
-        return 1;
+        return static_cast<int>(ExitCode::failure);
     }
 #endif
 
     if (argc != 2) {
         std::cerr << "usage: onebrc_baseline <input-path>\n";
-        return 2;
+        return static_cast<int>(ExitCode::usage);
     }
 
     try {
@@ -435,10 +455,10 @@ int main(int argc, char* argv[]) {
     }
     catch (const std::bad_alloc&) {
         std::cerr << "error: memory allocation failed\n";
-        return 3;
+        return static_cast<int>(ExitCode::allocation_failure);
     }
     catch (const std::exception& error) {
         std::cerr << "error: " << error.what() << '\n';
-        return 1;
+        return static_cast<int>(ExitCode::failure);
     }
 }

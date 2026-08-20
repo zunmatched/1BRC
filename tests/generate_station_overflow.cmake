@@ -1,0 +1,5 @@
+set(contents "")
+foreach(station RANGE 0 10000)
+    string(APPEND contents "Station${station};1.0\n")
+endforeach()
+file(WRITE "${OUTPUT}" "${contents}")

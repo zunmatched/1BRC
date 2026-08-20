@@ -68,8 +68,28 @@ if(BUILD_TESTING)
         endif()
     endif()
 
+    add_executable(onebrc_buffered_tiny_chunks src/baseline.cpp)
+    target_compile_definitions(onebrc_buffered_tiny_chunks PRIVATE
+        ONEBRC_INTEGER_PARSER=1
+        ONEBRC_NO_ROW_ALLOCATIONS=1
+        ONEBRC_BUFFERED_IO=1
+        ONEBRC_BOUNDED_MEMORY=1
+        ONEBRC_BUFFER_SIZE_BYTES=7
+    )
+    if(MSVC)
+        target_compile_options(onebrc_buffered_tiny_chunks PRIVATE /W4 /permissive-)
+    else()
+        target_compile_options(onebrc_buffered_tiny_chunks PRIVATE
+            -Wall -Wextra -Wpedantic -Wconversion -Wshadow)
+    endif()
+
     file(MAKE_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/generated-fixtures)
     file(WRITE ${CMAKE_CURRENT_BINARY_DIR}/generated-fixtures/no-final-newline.txt "Solo;-0.5")
+    file(WRITE ${CMAKE_CURRENT_BINARY_DIR}/generated-fixtures/empty-temperature.txt "Bad;\n")
+    file(WRITE ${CMAKE_CURRENT_BINARY_DIR}/generated-fixtures/missing-decimal.txt "Bad;10\n")
+    file(WRITE ${CMAKE_CURRENT_BINARY_DIR}/generated-fixtures/extra-separator.txt "Bad;1.0;extra\n")
+    string(REPEAT "A" 101 overlong_station)
+    file(WRITE ${CMAKE_CURRENT_BINARY_DIR}/generated-fixtures/overlong-station.txt "${overlong_station};1.0\n")
     if(WIN32)
         # file(WRITE) translates LF to CRLF on Windows; an explicit CR would be doubled.
         file(WRITE ${CMAKE_CURRENT_BINARY_DIR}/generated-fixtures/crlf.txt "Alpha;1.0\nAlpha;2.0\n")
@@ -95,6 +115,9 @@ if(BUILD_TESTING)
         add_cli_fixture_test(${target} utf8_long_names utf8-long-names.txt utf8-long-names.txt)
         add_cli_fixture_test(${target} extreme_values extreme-values.txt extreme-values.txt)
     endforeach()
+    add_cli_fixture_test(onebrc_buffered_tiny_chunks sample sample.txt sample.txt)
+    add_cli_fixture_test(onebrc_buffered_tiny_chunks rounding rounding.txt rounding.txt)
+    add_cli_fixture_test(onebrc_buffered_tiny_chunks utf8_long_names utf8-long-names.txt utf8-long-names.txt)
 
     function(add_generated_fixture_test target name input expected)
         add_test(
@@ -112,6 +135,40 @@ if(BUILD_TESTING)
         add_generated_fixture_test(${target} no_final_newline no-final-newline.txt no-final-newline.txt)
         add_generated_fixture_test(${target} crlf crlf.txt crlf.txt)
     endforeach()
+    add_generated_fixture_test(onebrc_buffered_tiny_chunks no_final_newline no-final-newline.txt no-final-newline.txt)
+    add_generated_fixture_test(onebrc_buffered_tiny_chunks crlf crlf.txt crlf.txt)
+
+    function(add_invalid_generated_test name input pattern)
+        add_test(
+            NAME bounded_memory_${name}
+            COMMAND ${CMAKE_COMMAND}
+                -DEXECUTABLE=$<TARGET_FILE:onebrc_bounded_memory>
+                -DINPUT=${CMAKE_CURRENT_BINARY_DIR}/generated-fixtures/${input}
+                -DERROR_PATTERN=${pattern}
+                -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/assert_failure.cmake
+        )
+    endfunction()
+    add_invalid_generated_test(empty_temperature empty-temperature.txt "invalid.temperature")
+    add_invalid_generated_test(missing_decimal missing-decimal.txt "invalid.temperature")
+    add_invalid_generated_test(extra_separator extra-separator.txt "invalid.record")
+    add_invalid_generated_test(overlong_station overlong-station.txt "invalid.record")
+
+    add_test(
+        NAME generate_station_overflow
+        COMMAND ${CMAKE_COMMAND}
+            -DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/generated-fixtures/station-overflow.txt
+            -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/generate_station_overflow.cmake
+    )
+    set_tests_properties(generate_station_overflow PROPERTIES FIXTURES_SETUP station_overflow)
+    add_test(
+        NAME bounded_memory_station_overflow
+        COMMAND ${CMAKE_COMMAND}
+            -DEXECUTABLE=$<TARGET_FILE:onebrc_bounded_memory>
+            -DINPUT=${CMAKE_CURRENT_BINARY_DIR}/generated-fixtures/station-overflow.txt
+            -DERROR_PATTERN=station.count.exceeds.limit
+            -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/assert_failure.cmake
+    )
+    set_tests_properties(bounded_memory_station_overflow PROPERTIES FIXTURES_REQUIRED station_overflow)
 
     add_test(
         NAME missing_input

@@ -34,14 +34,14 @@ $standardOutputTask = $process.StandardOutput.ReadToEndAsync()
 $standardErrorTask = $process.StandardError.ReadToEndAsync()
 
 $peakWorkingSet = [Int64]0
-$peakPrivateBytes = [Int64]0
+$peakCommittedBytes = [Int64]0
 $peakVirtualBytes = [Int64]0
 while (-not $process.HasExited) {
     try {
         $process.Refresh()
         $peakWorkingSet = [Math]::Max($peakWorkingSet, $process.WorkingSet64)
-        $peakPrivateBytes = [Math]::Max($peakPrivateBytes, $process.PrivateMemorySize64)
-        $peakVirtualBytes = [Math]::Max($peakVirtualBytes, $process.VirtualMemorySize64)
+        $peakCommittedBytes = [Math]::Max($peakCommittedBytes, $process.PeakPagedMemorySize64)
+        $peakVirtualBytes = [Math]::Max($peakVirtualBytes, $process.PeakVirtualMemorySize64)
     } catch {
         # The process can exit between HasExited and Refresh; final values are sampled below.
     }
@@ -53,8 +53,8 @@ $stopwatch.Stop()
 try {
     $process.Refresh()
     $peakWorkingSet = [Math]::Max($peakWorkingSet, $process.PeakWorkingSet64)
-    $peakPrivateBytes = [Math]::Max($peakPrivateBytes, $process.PrivateMemorySize64)
-    $peakVirtualBytes = [Math]::Max($peakVirtualBytes, $process.VirtualMemorySize64)
+    $peakCommittedBytes = [Math]::Max($peakCommittedBytes, $process.PeakPagedMemorySize64)
+    $peakVirtualBytes = [Math]::Max($peakVirtualBytes, $process.PeakVirtualMemorySize64)
 } catch {
     # Polling values remain valid if final process properties are no longer available.
 }
@@ -77,7 +77,7 @@ $markdown = @"
 - Exit code: $($process.ExitCode)
 - Elapsed: $($stopwatch.Elapsed.TotalSeconds.ToString('F6', [Globalization.CultureInfo]::InvariantCulture)) seconds
 - Peak working set: $peakWorkingSet bytes ($([Math]::Round($peakWorkingSet / 1MB, 2)) MiB)
-- Peak private bytes: $peakPrivateBytes bytes ($([Math]::Round($peakPrivateBytes / 1MB, 2)) MiB)
+- Peak committed bytes: $peakCommittedBytes bytes ($([Math]::Round($peakCommittedBytes / 1MB, 2)) MiB)
 - Peak virtual bytes: $peakVirtualBytes bytes ($([Math]::Round($peakVirtualBytes / 1MB, 2)) MiB)
 - Output bytes: $([System.Text.Encoding]::UTF8.GetByteCount($standardOutput))
 
@@ -86,5 +86,5 @@ Values describe the solution process only and exclude the filesystem cache maint
 
 [System.IO.Directory]::CreateDirectory((Split-Path -Parent $OutputPath)) | Out-Null
 [System.IO.File]::WriteAllText($OutputPath, $markdown, [System.Text.UTF8Encoding]::new($false))
-Write-Host "Peak working set $([Math]::Round($peakWorkingSet / 1MB, 2)) MiB; private $([Math]::Round($peakPrivateBytes / 1MB, 2)) MiB; virtual $([Math]::Round($peakVirtualBytes / 1MB, 2)) MiB"
+Write-Host "Peak working set $([Math]::Round($peakWorkingSet / 1MB, 2)) MiB; committed $([Math]::Round($peakCommittedBytes / 1MB, 2)) MiB; virtual $([Math]::Round($peakVirtualBytes / 1MB, 2)) MiB"
 Write-Host "Wrote $OutputPath"

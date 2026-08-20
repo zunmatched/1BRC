@@ -24,14 +24,17 @@ Completed stability controls:
 
 - The production buffer is fixed at 4 MiB and the input is never materialized in heap memory.
 - The station map reserves the documented 10,000-key bound before processing.
+- A 10,001st unique station is rejected before any further map allocation.
 - Output sorting stores pointers to map entries instead of copying names and aggregates.
 - `std::bad_alloc` produces a stable diagnostic and exit code 3.
 - Windows Job Object tests cover success and deterministic allocation failure under a 32 MiB process limit.
-- `scripts/measure-memory.ps1` records peak working set, private bytes, and virtual bytes for the child solution process.
+- The Job runner owns Windows handles through move-only RAII, checks API failures, and enforces a 10-minute timeout.
+- `scripts/measure-memory.ps1` records OS-maintained peak working set, committed/pagefile usage, and virtual bytes for the child solution process.
 
 Remaining before adding threads:
 
 - Run the complete 1B input and confirm byte-identical output plus the same bounded-memory behavior.
+- Run AddressSanitizer and UndefinedBehaviorSanitizer with a toolchain that provides their runtimes; the installed Strawberry MinGW distribution does not include `libasan` or `libubsan`.
 
 Acceptance requires no uncaught allocation failures, no input-sized heap allocation, byte-identical output, and documented peak-memory measurements.
 

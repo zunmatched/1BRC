@@ -55,6 +55,8 @@ The buffered target streams through a 4 MiB buffer and preserves partial records
 .\build\onebrc_bounded_memory.exe .\tests\fixtures\sample.txt
 ```
 
+The bound is enforced, not merely reserved: a 10,001st unique station is rejected before another map allocation. Mean rounding is performed with exact integer arithmetic, including negative half ties toward positive infinity.
+
 Input records are UTF-8 `station;temperature` lines. Temperatures range from `-99.9` to `99.9`; aggregates are stored as integer tenths and stations are sorted by UTF-8 bytes. Errors go to stderr with a non-zero exit code.
 
 ## Generate datasets
@@ -82,7 +84,7 @@ Benchmark Release builds with at least five measured warm-cache runs:
 
 The script performs one unmeasured warm-up, reports the median and MiB/s, captures basic hardware metadata, and writes `results/baseline.local.md`. That local report is ignored until reviewed and renamed. Cold-cache numbers must be recorded separately after reboot because Windows has no reliable unprivileged cache-eviction interface.
 
-Measure process memory separately from the Windows filesystem cache:
+Measure OS-maintained peak working set, committed/pagefile usage, and virtual memory separately from the Windows filesystem cache:
 
 ```powershell
 .\scripts\measure-memory.ps1 `

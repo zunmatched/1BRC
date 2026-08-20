@@ -13,6 +13,49 @@
 
 namespace {
 
+class UniqueHandle {
+public:
+    UniqueHandle() = default;
+    explicit UniqueHandle(HANDLE handle) noexcept : handle_(handle) {}
+
+    UniqueHandle(const UniqueHandle&) = delete;
+    UniqueHandle& operator=(const UniqueHandle&) = delete;
+
+    UniqueHandle(UniqueHandle&& other) noexcept : handle_(other.handle_) {
+        other.handle_ = nullptr;
+    }
+
+    UniqueHandle& operator=(UniqueHandle&& other) noexcept {
+        if (this != &other) {
+            reset();
+            handle_ = other.handle_;
+            other.handle_ = nullptr;
+        }
+        return *this;
+    }
+
+    ~UniqueHandle() {
+        reset();
+    }
+
+    [[nodiscard]] HANDLE get() const noexcept { return handle_; }
+    [[nodiscard]] explicit operator bool() const noexcept { return handle_ != nullptr; }
+
+    void reset(HANDLE replacement = nullptr) noexcept {
+        if (handle_ != nullptr) {
+            CloseHandle(handle_);
+        }
+        handle_ = replacement;
+    }
+
+private:
+    HANDLE handle_ = nullptr;
+};
+
+[[nodiscard]] std::string windows_error(std::string_view operation) {
+    return std::string(operation) + " (Win32 error " + std::to_string(GetLastError()) + ')';
+}
+
 [[nodiscard]] std::wstring utf8_to_wide(std::string_view text) {
     const int required = MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, text.data(),
                                               static_cast<int>(text.size()), nullptr, 0);
@@ -85,18 +128,17 @@ int main(int argc, char* argv[]) {
     std::vector<wchar_t> mutable_command(command_line.begin(), command_line.end());
     mutable_command.push_back(L'\0');
 
-    HANDLE job = CreateJobObjectW(nullptr, nullptr);
-    if (job == nullptr) {
-        std::cerr << "error: cannot create Job Object\n";
+    UniqueHandle job(CreateJobObjectW(nullptr, nullptr));
+    if (!job) {
+        std::cerr << "error: " << windows_error("cannot create Job Object") << '\n';
         return 1;
     }
 
     JOBOBJECT_EXTENDED_LIMIT_INFORMATION limits{};
     limits.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_PROCESS_MEMORY | JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
     limits.ProcessMemoryLimit = static_cast<SIZE_T>(limit_mib * 1024U * 1024U);
-    if (SetInformationJobObject(job, JobObjectExtendedLimitInformation, &limits, sizeof(limits)) == 0) {
-        CloseHandle(job);
-        std::cerr << "error: cannot configure Job Object\n";
+    if (SetInformationJobObject(job.get(), JobObjectExtendedLimitInformation, &limits, sizeof(limits)) == 0) {
+        std::cerr << "error: " << windows_error("cannot configure Job Object") << '\n';
         return 1;
     }
 
@@ -105,28 +147,44 @@ int main(int argc, char* argv[]) {
     PROCESS_INFORMATION process{};
     if (CreateProcessW(nullptr, mutable_command.data(), nullptr, nullptr, TRUE, CREATE_SUSPENDED, nullptr, nullptr,
                        &startup, &process) == 0) {
-        CloseHandle(job);
-        std::cerr << "error: cannot start child process\n";
+        std::cerr << "error: " << windows_error("cannot start child process") << '\n';
+        return 1;
+    }
+    UniqueHandle process_handle(process.hProcess);
+    UniqueHandle thread_handle(process.hThread);
+
+    if (AssignProcessToJobObject(job.get(), process_handle.get()) == 0) {
+        const auto message = windows_error("cannot assign child process to Job Object");
+        TerminateProcess(process_handle.get(), 1);
+        std::cerr << "error: " << message << '\n';
         return 1;
     }
 
-    if (AssignProcessToJobObject(job, process.hProcess) == 0) {
-        TerminateProcess(process.hProcess, 1);
-        CloseHandle(process.hThread);
-        CloseHandle(process.hProcess);
-        CloseHandle(job);
-        std::cerr << "error: cannot assign child process to Job Object\n";
+    if (ResumeThread(thread_handle.get()) == std::numeric_limits<DWORD>::max()) {
+        const auto message = windows_error("cannot resume child process");
+        TerminateProcess(process_handle.get(), 1);
+        std::cerr << "error: " << message << '\n';
         return 1;
     }
+    thread_handle.reset();
 
-    ResumeThread(process.hThread);
-    CloseHandle(process.hThread);
-    WaitForSingleObject(process.hProcess, INFINITE);
+    constexpr DWORD timeout_milliseconds = 10U * 60U * 1000U;
+    const DWORD wait_result = WaitForSingleObject(process_handle.get(), timeout_milliseconds);
+    if (wait_result == WAIT_TIMEOUT) {
+        TerminateProcess(process_handle.get(), 1);
+        WaitForSingleObject(process_handle.get(), 5'000U);
+        std::cerr << "error: child process exceeded 10 minute timeout\n";
+        return 1;
+    }
+    if (wait_result != WAIT_OBJECT_0) {
+        std::cerr << "error: " << windows_error("cannot wait for child process") << '\n';
+        return 1;
+    }
 
     DWORD exit_code = 1;
-    GetExitCodeProcess(process.hProcess, &exit_code);
-    CloseHandle(process.hProcess);
-    CloseHandle(job);
+    if (GetExitCodeProcess(process_handle.get(), &exit_code) == 0) {
+        std::cerr << "error: " << windows_error("cannot read child exit code") << '\n';
+        return 1;
+    }
     return exit_code <= static_cast<DWORD>(std::numeric_limits<int>::max()) ? static_cast<int>(exit_code) : 1;
 }
-
