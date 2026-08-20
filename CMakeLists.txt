@@ -11,9 +11,20 @@ add_executable(onebrc_integer_parser src/baseline.cpp)
 target_compile_definitions(onebrc_integer_parser PRIVATE ONEBRC_INTEGER_PARSER=1)
 add_executable(onebrc_no_row_allocations src/baseline.cpp)
 target_compile_definitions(onebrc_no_row_allocations PRIVATE ONEBRC_INTEGER_PARSER=1 ONEBRC_NO_ROW_ALLOCATIONS=1)
+add_executable(onebrc_buffered_io src/baseline.cpp)
+target_compile_definitions(onebrc_buffered_io PRIVATE ONEBRC_INTEGER_PARSER=1 ONEBRC_NO_ROW_ALLOCATIONS=1 ONEBRC_BUFFERED_IO=1)
+if(WIN32)
+    add_executable(onebrc_mmap src/baseline.cpp)
+    target_compile_definitions(onebrc_mmap PRIVATE ONEBRC_INTEGER_PARSER=1 ONEBRC_NO_ROW_ALLOCATIONS=1 ONEBRC_MMAP=1)
+endif()
 add_executable(onebrc_generate tools/generate.cpp)
 
-foreach(target IN ITEMS onebrc_baseline onebrc_integer_parser onebrc_no_row_allocations onebrc_generate)
+set(solution_targets onebrc_baseline onebrc_integer_parser onebrc_no_row_allocations onebrc_buffered_io)
+if(WIN32)
+    list(APPEND solution_targets onebrc_mmap)
+endif()
+
+foreach(target IN LISTS solution_targets)
     if(MSVC)
         target_compile_options(${target} PRIVATE /W4 /permissive-)
     else()
@@ -21,11 +32,22 @@ foreach(target IN ITEMS onebrc_baseline onebrc_integer_parser onebrc_no_row_allo
     endif()
 endforeach()
 
+if(MSVC)
+    target_compile_options(onebrc_generate PRIVATE /W4 /permissive-)
+else()
+    target_compile_options(onebrc_generate PRIVATE -Wall -Wextra -Wpedantic -Wconversion -Wshadow)
+endif()
+
 include(CTest)
 if(BUILD_TESTING)
     file(MAKE_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/generated-fixtures)
     file(WRITE ${CMAKE_CURRENT_BINARY_DIR}/generated-fixtures/no-final-newline.txt "Solo;-0.5")
-    file(WRITE ${CMAKE_CURRENT_BINARY_DIR}/generated-fixtures/crlf.txt "Alpha;1.0\r\nAlpha;2.0\r\n")
+    if(WIN32)
+        # file(WRITE) translates LF to CRLF on Windows; an explicit CR would be doubled.
+        file(WRITE ${CMAKE_CURRENT_BINARY_DIR}/generated-fixtures/crlf.txt "Alpha;1.0\nAlpha;2.0\n")
+    else()
+        file(WRITE ${CMAKE_CURRENT_BINARY_DIR}/generated-fixtures/crlf.txt "Alpha;1.0\r\nAlpha;2.0\r\n")
+    endif()
 
     function(add_cli_fixture_test target name input expected)
         add_test(
@@ -39,7 +61,6 @@ if(BUILD_TESTING)
         )
     endfunction()
 
-    set(solution_targets onebrc_baseline onebrc_integer_parser onebrc_no_row_allocations)
     foreach(target IN LISTS solution_targets)
         add_cli_fixture_test(${target} sample sample.txt sample.txt)
         add_cli_fixture_test(${target} rounding rounding.txt rounding.txt)
@@ -91,4 +112,20 @@ if(BUILD_TESTING)
             -DINPUT=${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/invalid-record.txt
             -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/assert_failure.cmake
     )
+    add_test(
+        NAME buffered_io_invalid_record
+        COMMAND ${CMAKE_COMMAND}
+            -DEXECUTABLE=$<TARGET_FILE:onebrc_buffered_io>
+            -DINPUT=${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/invalid-record.txt
+            -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/assert_failure.cmake
+    )
+    if(WIN32)
+        add_test(
+            NAME mmap_invalid_record
+            COMMAND ${CMAKE_COMMAND}
+                -DEXECUTABLE=$<TARGET_FILE:onebrc_mmap>
+                -DINPUT=${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/invalid-record.txt
+                -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/assert_failure.cmake
+        )
+    endif()
 endif()

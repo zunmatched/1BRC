@@ -38,6 +38,15 @@ The CLI accepts exactly one input path and writes only the canonical result to s
 .\build\onebrc_no_row_allocations.exe .\tests\fixtures\sample.txt
 ```
 
+Stage 4 provides two single-threaded I/O variants with the same parser and aggregation logic:
+
+```powershell
+.\build\onebrc_buffered_io.exe .\tests\fixtures\sample.txt
+.\build\onebrc_mmap.exe .\tests\fixtures\sample.txt
+```
+
+The buffered target streams through a 4 MiB buffer and preserves partial records across reads. The Windows-only mapped target uses `CreateFileMapping` and accepts UTF-8 paths. Current warm-cache results favor the buffered target; both remain available for later experiments.
+
 Input records are UTF-8 `station;temperature` lines. Temperatures range from `-99.9` to `99.9`; aggregates are stored as integer tenths and stations are sorted by UTF-8 bytes. Errors go to stderr with a non-zero exit code.
 
 ## Generate datasets
@@ -70,7 +79,7 @@ The script performs one unmeasured warm-up, reports the median and MiB/s, captur
 1. Baseline: `getline`, standard parsing, and `unordered_map`.
 2. Integer parser: replace general numeric parsing while retaining the baseline allocation behavior.
 3. No-row-allocation lookup: remove temporary substrings and copy station names only once.
-4. Compare buffered I/O with Windows file mapping.
+4. I/O comparison: stream through a 4 MiB buffer or use Windows file mapping.
 5. Add newline-safe chunking and thread-local aggregation.
 6. Use profiler evidence to evaluate a custom hash table, branch reduction, or SIMD.
 
