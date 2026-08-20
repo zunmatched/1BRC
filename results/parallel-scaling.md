@@ -22,6 +22,16 @@ Environment: AMD Ryzen AI 9 HX 370, 24 logical processors, 31.1 GiB RAM, Windows
 
 ## 1B Validation
 
-The 24-thread target processed 13,712,587,980 bytes in 4.044860 seconds. Peak working set was 14.52 MiB and peak committed usage was 10.58 MiB. Raw output was byte-for-byte identical to `onebrc_bounded_memory`, with SHA-256 `B76132766D1CA123E37DA87FCC38DFCDB424F0D9319341B649F817684C20EFA5`.
+Five-run warm-cache measurements over 13,712,587,980 bytes show continued scaling with diminishing returns near the hardware thread count. Every measured run verified raw stdout byte-for-byte against `onebrc_bounded_memory`.
+
+| Threads | Median seconds | Throughput |
+|---:|---:|---:|
+| 8 | 7.641149 | 1,711.44 MiB/s |
+| 12 | 5.882302 | 2,223.17 MiB/s |
+| 16 | 4.857291 | 2,692.31 MiB/s |
+| 24 | 3.985721 | 3,281.05 MiB/s |
+| 32 | 3.685825 | 3,548.01 MiB/s |
+
+The 32-thread result is about 8% faster than 24 threads, compared with about 22% from 16 to 24 threads, indicating that saturation is approaching. A separate 24-thread memory run completed in 4.044860 seconds with a 14.52 MiB peak working set and 10.58 MiB peak committed usage. Raw output SHA-256 was `B76132766D1CA123E37DA87FCC38DFCDB424F0D9319341B649F817684C20EFA5`.
 
 These are initial local measurements, not final competition claims. Repeated 1B runs and profiler evidence are required before selecting further optimizations.

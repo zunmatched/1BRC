@@ -3,6 +3,8 @@ param(
     [Parameter(Mandatory)]
     [string]$InputPath,
     [string]$Executable = (Join-Path $PSScriptRoot '..\build\onebrc_baseline.exe'),
+    [string[]]$ExtraArguments = @(),
+    [string]$ExpectedOutputPath,
     [ValidateRange(5, 100)]
     [int]$Runs = 5,
     [ValidateSet('Warm')]
@@ -19,21 +21,52 @@ if (-not (Test-Path -LiteralPath $InputPath -PathType Leaf)) {
 if (-not (Test-Path -LiteralPath $Executable -PathType Leaf)) {
     throw "Executable not found: $Executable"
 }
-
-# A warm-up makes the cache state explicit and keeps it outside the measured samples.
-& $Executable $InputPath | Out-Null
-if ($LASTEXITCODE -ne 0) {
-    throw "Warm-up failed with exit code $LASTEXITCODE."
+if ($ExpectedOutputPath) {
+    $ExpectedOutputPath = [System.IO.Path]::GetFullPath($ExpectedOutputPath)
+    if (-not (Test-Path -LiteralPath $ExpectedOutputPath -PathType Leaf)) {
+        throw "Expected output not found: $ExpectedOutputPath"
+    }
+    $expectedOutput = [System.IO.File]::ReadAllBytes($ExpectedOutputPath)
 }
 
-$samples = for ($run = 1; $run -le $Runs; ++$run) {
-    $stopwatch = [System.Diagnostics.Stopwatch]::StartNew()
-    & $Executable $InputPath | Out-Null
-    $stopwatch.Stop()
-    if ($LASTEXITCODE -ne 0) {
-        throw "Benchmark run $run failed with exit code $LASTEXITCODE."
+function Invoke-Solution {
+    $startInfo = [System.Diagnostics.ProcessStartInfo]::new()
+    $startInfo.FileName = $Executable
+    $startInfo.ArgumentList.Add($InputPath)
+    foreach ($argument in $ExtraArguments) {
+        $startInfo.ArgumentList.Add($argument)
     }
-    $stopwatch.Elapsed.TotalSeconds
+    $startInfo.UseShellExecute = $false
+    $startInfo.CreateNoWindow = $true
+    $startInfo.RedirectStandardOutput = $true
+    $startInfo.RedirectStandardError = $true
+
+    $process = [System.Diagnostics.Process]::new()
+    $process.StartInfo = $startInfo
+    $stopwatch = [System.Diagnostics.Stopwatch]::StartNew()
+    if (-not $process.Start()) { throw 'Failed to start benchmark process.' }
+    $outputBuffer = [System.IO.MemoryStream]::new()
+    $outputTask = $process.StandardOutput.BaseStream.CopyToAsync($outputBuffer)
+    $errorTask = $process.StandardError.ReadToEndAsync()
+    $process.WaitForExit()
+    $outputTask.GetAwaiter().GetResult()
+    $standardError = $errorTask.GetAwaiter().GetResult()
+    $stopwatch.Stop()
+    if ($process.ExitCode -ne 0) {
+        throw "Benchmark process failed with $($process.ExitCode): $standardError"
+    }
+    if ($ExpectedOutputPath -and
+        -not [System.Linq.Enumerable]::SequenceEqual($outputBuffer.ToArray(), $expectedOutput)) {
+        throw 'Benchmark output did not match the expected output byte-for-byte.'
+    }
+    [pscustomobject]@{ Seconds = $stopwatch.Elapsed.TotalSeconds }
+}
+
+# A warm-up makes the cache state explicit and keeps it outside the measured samples.
+$null = Invoke-Solution
+
+$samples = for ($run = 1; $run -le $Runs; ++$run) {
+    (Invoke-Solution).Seconds
 }
 
 $ordered = @($samples | Sort-Object)
@@ -71,7 +104,9 @@ $markdown = @"
 - Timestamp: $timestamp
 - Cache mode: $CacheMode (one unmeasured warm-up)
 - Executable: ``$Executable``
+- Extra arguments: ``$($ExtraArguments -join ' ')``
 - Input: ``$InputPath``
+- Output verification: $(if ($ExpectedOutputPath) { "byte-for-byte against ``$ExpectedOutputPath``" } else { 'not requested' })
 - Input bytes: $bytes
 - Runs: $Runs
 - Samples (seconds): $sampleText
