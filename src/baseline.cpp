@@ -1,4 +1,6 @@
 #include <algorithm>
+#include <array>
+#include <charconv>
 #include <cmath>
 #include <cstring>
 #include <cstdint>
@@ -10,6 +12,7 @@
 #include <stdexcept>
 #include <string>
 #include <string_view>
+#include <thread>
 #include <unordered_map>
 #include <utility>
 #include <vector>
@@ -17,7 +20,7 @@
 #ifdef _WIN32
 #include <fcntl.h>
 #include <io.h>
-#ifdef ONEBRC_MMAP
+#if defined(ONEBRC_MMAP) || defined(ONEBRC_PARALLEL)
 #ifndef NOMINMAX
 #define NOMINMAX
 #endif
@@ -47,6 +50,13 @@ struct Stats {
         maximum = std::max(maximum, temperature);
         sum += temperature;
         ++count;
+    }
+
+    void merge(const Stats& other) {
+        minimum = std::min(minimum, other.minimum);
+        maximum = std::max(maximum, other.maximum);
+        sum += other.sum;
+        count += other.count;
     }
 };
 
@@ -196,7 +206,7 @@ void process_record(const std::string& record, StationMap& stations, std::uint64
 }
 #endif
 
-#if !defined(ONEBRC_BUFFERED_IO) && !defined(ONEBRC_MMAP)
+#if !defined(ONEBRC_BUFFERED_IO) && !defined(ONEBRC_MMAP) && !defined(ONEBRC_PARALLEL)
 void aggregate_with_getline(const std::string& input_path, StationMap& stations) {
     std::ifstream input(input_path);
     if (!input) {
@@ -281,7 +291,7 @@ void aggregate_with_buffer(const std::string& input_path, StationMap& stations) 
 }
 #endif
 
-#ifdef ONEBRC_MMAP
+#if defined(ONEBRC_MMAP) || defined(ONEBRC_PARALLEL)
 [[nodiscard]] std::wstring utf8_to_wide(const std::string& text) {
     const int required = MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, text.data(),
                                               static_cast<int>(text.size()), nullptr, 0);
@@ -361,6 +371,7 @@ private:
     std::size_t size_ = 0;
 };
 
+#ifdef ONEBRC_MMAP
 void aggregate_with_mapping(const std::string& input_path, StationMap& stations) {
     const MappedFile file(input_path);
     if (file.size() == 0) {
@@ -381,7 +392,172 @@ void aggregate_with_mapping(const std::string& input_path, StationMap& stations)
 }
 #endif
 
-int run(const std::string& input_path) {
+#ifdef ONEBRC_PARALLEL
+constexpr std::size_t maximum_thread_count = 32;
+
+[[nodiscard]] std::size_t default_thread_count() noexcept {
+    const auto detected = static_cast<std::size_t>(std::thread::hardware_concurrency());
+    return std::clamp(detected, std::size_t{1}, maximum_thread_count);
+}
+
+[[nodiscard]] std::size_t parse_thread_count(std::string_view text) {
+    std::size_t result = 0;
+    const auto [end, error] = std::from_chars(text.data(), text.data() + text.size(), result);
+    if (error != std::errc{} || end != text.data() + text.size() || result == 0 ||
+        result > maximum_thread_count) {
+        throw std::runtime_error("thread count must be between 1 and " +
+                                 std::to_string(maximum_thread_count));
+    }
+    return result;
+}
+
+void merge_stations(StationMap& destination, const StationMap& source) {
+    for (const auto& [name, stats] : source) {
+        auto station = destination.find(name);
+        if (station == destination.end()) {
+            if (destination.size() == maximum_station_count) {
+                throw std::runtime_error("station count exceeds limit of " +
+                                         std::to_string(maximum_station_count));
+            }
+            station = destination.emplace(name, Stats{}).first;
+        }
+        station->second.merge(stats);
+    }
+}
+
+void aggregate_buffered_range(const std::string& input_path, std::size_t begin, std::size_t end,
+                              StationMap& stations) {
+    constexpr std::size_t chunk_size = 256U * 1024U;
+    constexpr std::size_t maximum_record_size = 108;
+
+    std::ifstream input(input_path, std::ios::binary);
+    if (!input) {
+        throw std::runtime_error("cannot open input file: " + input_path);
+    }
+    input.seekg(static_cast<std::streamoff>(begin));
+    if (!input) {
+        throw std::runtime_error("cannot seek within input file");
+    }
+
+    std::vector<char> buffer(chunk_size + maximum_record_size);
+    auto remaining_in_range = end - begin;
+    std::size_t carried = 0;
+    std::uint64_t local_line_number = 0;
+    while (remaining_in_range != 0) {
+        const auto requested = std::min(chunk_size, remaining_in_range);
+        input.read(buffer.data() + carried, static_cast<std::streamsize>(requested));
+        const auto bytes_read = static_cast<std::size_t>(input.gcount());
+        if (bytes_read != requested) {
+            throw std::runtime_error("failed while reading input file");
+        }
+        remaining_in_range -= bytes_read;
+
+        const char* cursor = buffer.data();
+        const char* const buffer_end = buffer.data() + carried + bytes_read;
+        while (cursor < buffer_end) {
+            const auto available = static_cast<std::size_t>(buffer_end - cursor);
+            const auto* newline = static_cast<const char*>(std::memchr(cursor, '\n', available));
+            if (newline == nullptr) {
+                break;
+            }
+            ++local_line_number;
+            process_record(std::string_view(cursor, static_cast<std::size_t>(newline - cursor)), stations,
+                           local_line_number);
+            cursor = newline + 1;
+        }
+
+        carried = static_cast<std::size_t>(buffer_end - cursor);
+        if (carried > maximum_record_size) {
+            throw std::runtime_error("record exceeds maximum length in input range");
+        }
+        std::memmove(buffer.data(), cursor, carried);
+    }
+
+    if (carried != 0) {
+        ++local_line_number;
+        process_record(std::string_view(buffer.data(), carried), stations, local_line_number);
+    }
+}
+
+void aggregate_in_parallel(const std::string& input_path, StationMap& stations,
+                           std::size_t requested_threads) {
+    constexpr std::size_t maximum_record_size = 108;
+    std::ifstream boundary_input(input_path, std::ios::binary | std::ios::ate);
+    if (!boundary_input) {
+        throw std::runtime_error("cannot open input file: " + input_path);
+    }
+    const auto stream_size = static_cast<std::streamoff>(boundary_input.tellg());
+    if (stream_size < 0 || static_cast<std::uint64_t>(stream_size) >
+                               static_cast<std::uint64_t>(std::numeric_limits<std::size_t>::max())) {
+        throw std::runtime_error("cannot determine input file size");
+    }
+    const auto file_size = static_cast<std::size_t>(stream_size);
+    if (file_size == 0) {
+        return;
+    }
+
+    const auto requested_range_count = std::min(requested_threads, file_size);
+    std::vector<std::size_t> boundaries(requested_range_count + 1, file_size);
+    boundaries.front() = 0;
+    std::array<char, maximum_record_size + 1> boundary_buffer{};
+    for (std::size_t index = 1; index < requested_range_count; ++index) {
+        const auto nominal = file_size / requested_range_count * index;
+        boundary_input.clear();
+        boundary_input.seekg(static_cast<std::streamoff>(nominal));
+        const auto bytes_to_scan = std::min(boundary_buffer.size(), file_size - nominal);
+        boundary_input.read(boundary_buffer.data(), static_cast<std::streamsize>(bytes_to_scan));
+        const auto bytes_read = static_cast<std::size_t>(boundary_input.gcount());
+        const auto* newline = static_cast<const char*>(
+            std::memchr(boundary_buffer.data(), '\n', bytes_read));
+        if (newline == nullptr) {
+            if (nominal + bytes_read != file_size) {
+                throw std::runtime_error("record exceeds maximum length near partition boundary");
+            }
+            boundaries[index] = file_size;
+        }
+        else {
+            boundaries[index] = nominal +
+                                static_cast<std::size_t>(newline + 1 - boundary_buffer.data());
+        }
+    }
+
+    const auto thread_count = boundaries.size() - 1;
+    std::vector<StationMap> local_stations(thread_count);
+    std::vector<std::exception_ptr> failures(thread_count);
+    std::vector<std::jthread> workers;
+    workers.reserve(thread_count);
+    for (std::size_t index = 0; index < thread_count; ++index) {
+        local_stations[index].max_load_factor(0.8F);
+        local_stations[index].reserve(maximum_station_count);
+        workers.emplace_back([&, index]() {
+            try {
+                aggregate_buffered_range(input_path, boundaries[index], boundaries[index + 1],
+                                         local_stations[index]);
+            }
+            catch (...) {
+                failures[index] = std::current_exception();
+            }
+        });
+    }
+    workers.clear();
+
+    for (const auto& failure : failures) {
+        if (failure != nullptr) {
+            std::rethrow_exception(failure);
+        }
+    }
+    for (const auto& local : local_stations) {
+        merge_stations(stations, local);
+    }
+}
+#endif
+#endif
+
+int run(const std::string& input_path
+#ifdef ONEBRC_PARALLEL
+        , std::size_t thread_count
+#endif
+) {
     StationMap stations;
 #ifdef ONEBRC_BOUNDED_MEMORY
     stations.max_load_factor(0.8F);
@@ -390,7 +566,9 @@ int run(const std::string& input_path) {
     stations.reserve(512);
 #endif
 
-#ifdef ONEBRC_MMAP
+#ifdef ONEBRC_PARALLEL
+    aggregate_in_parallel(input_path, stations, thread_count);
+#elif defined(ONEBRC_MMAP)
     aggregate_with_mapping(input_path, stations);
 #elif defined(ONEBRC_BUFFERED_IO)
     aggregate_with_buffer(input_path, stations);
@@ -445,13 +623,25 @@ int main(int argc, char* argv[]) {
     }
 #endif
 
+#ifdef ONEBRC_PARALLEL
+    if (argc < 2 || argc > 3) {
+        std::cerr << "usage: onebrc_parallel <input-path> [thread-count]\n";
+        return static_cast<int>(ExitCode::usage);
+    }
+#else
     if (argc != 2) {
         std::cerr << "usage: onebrc_baseline <input-path>\n";
         return static_cast<int>(ExitCode::usage);
     }
+#endif
 
     try {
+#ifdef ONEBRC_PARALLEL
+        const auto thread_count = argc == 3 ? parse_thread_count(argv[2]) : default_thread_count();
+        return run(argv[1], thread_count);
+#else
         return run(argv[1]);
+#endif
     }
     catch (const std::bad_alloc&) {
         std::cerr << "error: memory allocation failed\n";

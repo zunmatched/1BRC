@@ -57,6 +57,14 @@ The buffered target streams through a 4 MiB buffer and preserves partial records
 
 The bound is enforced, not merely reserved: a 10,001st unique station is rejected before another map allocation. Mean rounding is performed with exact integer arithmetic, including negative half ties toward positive infinity.
 
+The Windows parallel target accepts an optional thread count from 1 to 32; otherwise it uses the detected hardware concurrency, capped at 32:
+
+```powershell
+.\build\onebrc_parallel.exe .\data\measurements-100m-random.txt 24
+```
+
+It moves each nominal range boundary to the next newline, uses one fixed 256 KiB buffer and private aggregate table per worker, performs no locking in the hot loop, and merges once after all `std::jthread` workers finish. The existing single-threaded targets remain unchanged as correctness and performance references.
+
 Input records are UTF-8 `station;temperature` lines. Temperatures range from `-99.9` to `99.9`; aggregates are stored as integer tenths and stations are sorted by UTF-8 bytes. Errors go to stderr with a non-zero exit code.
 
 ## Generate datasets
@@ -88,7 +96,9 @@ Measure OS-maintained peak working set, committed/pagefile usage, and virtual me
 
 ```powershell
 .\scripts\measure-memory.ps1 `
-  -InputPath .\data\measurements-100m-random.txt
+  -InputPath .\data\measurements-100m-random.txt `
+  -Executable .\build\onebrc_parallel.exe `
+  -ExtraArguments 24
 ```
 
 Windows CTest also runs the solution inside a Job Object: the production target must succeed under 32 MiB, while a test-only 64 MiB-buffer build must catch allocation failure under the same limit and return exit code 3.
@@ -101,7 +111,7 @@ Windows CTest also runs the solution inside a Job Object: the production target 
 4. I/O comparison: stream through a 4 MiB buffer or use Windows file mapping.
 5. Establish a bounded-memory contract, measure peak memory, and test controlled allocation failure.
 6. Run the complete 1B dataset with the single-threaded stable implementation.
-7. Add newline-safe chunking and thread-local aggregation under an explicit total memory budget.
+7. Add newline-safe chunking and thread-local aggregation under an explicit total memory budget. (Completed.)
 8. Use profiler evidence to evaluate a custom hash table, branch reduction, or SIMD.
 
 Each version must pass correctness, bounded-memory, and failure-behavior checks before its performance is reported. Benchmark results from different hardware are not directly comparable.

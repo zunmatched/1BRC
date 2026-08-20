@@ -18,6 +18,8 @@ Input size must not determine heap size. Implementations may stream or map the i
 - Single-threaded comparison of `getline`, 4 MiB buffered I/O, and Windows file mapping.
 - Reproducible 10M and 100M warm-cache benchmarks.
 - Complete 1B validation: byte-identical output against the portable baseline with 5.05 MiB peak committed memory.
+- Bounded parallel aggregation with newline-safe ranges, fixed 256 KiB worker buffers, private maps, and a single final merge.
+- Parallel 1B validation at 24 threads: byte-identical output, 14.52 MiB peak working set, and 10.58 MiB peak committed memory.
 
 ## Current: Memory Resilience
 
@@ -38,11 +40,14 @@ Remaining validation work:
 
 Acceptance requires no uncaught allocation failures, no input-sized heap allocation, byte-identical output, and documented peak-memory measurements.
 
-## Later Milestones
+## Current: Parallel Scaling
 
-1. Add newline-safe parallel partitioning with thread-local aggregation and an explicit total memory budget. Buffer and table memory must be derived from the selected thread count.
-2. Measure scaling at 1, 2, 4, 8, and higher thread counts; stop when throughput or the memory budget no longer improves.
-3. Evaluate a custom hash table, branch reduction, or SIMD only when profiling identifies the relevant bottleneck.
-4. Produce the final 1B benchmark, architecture explanation, limitations, and résumé-ready results.
+The parallel target caps execution at 32 threads. Its resident working set is bounded by fixed per-thread buffers and station tables rather than input size. CTest exercises explicit thread counts, partition boundaries, propagated worker failures, the global station limit, and execution under a 64 MiB Job limit.
+
+Next milestones:
+
+1. Repeat scaling measurements and identify the saturation point under controlled system load.
+2. Evaluate a custom hash table, branch reduction, or SIMD only when profiling identifies the relevant bottleneck.
+3. Produce the final architecture explanation, limitations, and résumé-ready results.
 
 Every milestone is committed separately and must include correctness tests, stability evidence, and same-machine before/after measurements.

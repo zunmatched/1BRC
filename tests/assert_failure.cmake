@@ -1,6 +1,6 @@
 if(DEFINED INPUT)
     execute_process(
-        COMMAND "${EXECUTABLE}" "${INPUT}"
+        COMMAND "${EXECUTABLE}" "${INPUT}" ${ARGUMENTS}
         RESULT_VARIABLE exit_code
         OUTPUT_VARIABLE standard_output
         ERROR_VARIABLE standard_error

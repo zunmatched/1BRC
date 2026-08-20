@@ -18,6 +18,8 @@ target_compile_definitions(onebrc_bounded_memory PRIVATE ONEBRC_INTEGER_PARSER=1
 if(WIN32)
     add_executable(onebrc_mmap src/baseline.cpp)
     target_compile_definitions(onebrc_mmap PRIVATE ONEBRC_INTEGER_PARSER=1 ONEBRC_NO_ROW_ALLOCATIONS=1 ONEBRC_MMAP=1)
+    add_executable(onebrc_parallel src/baseline.cpp)
+    target_compile_definitions(onebrc_parallel PRIVATE ONEBRC_INTEGER_PARSER=1 ONEBRC_NO_ROW_ALLOCATIONS=1 ONEBRC_BOUNDED_MEMORY=1 ONEBRC_PARALLEL=1)
 endif()
 add_executable(onebrc_generate tools/generate.cpp)
 if(WIN32)
@@ -26,7 +28,7 @@ endif()
 
 set(solution_targets onebrc_baseline onebrc_integer_parser onebrc_no_row_allocations onebrc_buffered_io onebrc_bounded_memory)
 if(WIN32)
-    list(APPEND solution_targets onebrc_mmap)
+    list(APPEND solution_targets onebrc_mmap onebrc_parallel)
 endif()
 
 foreach(target IN LISTS solution_targets)
@@ -118,6 +120,18 @@ if(BUILD_TESTING)
     add_cli_fixture_test(onebrc_buffered_tiny_chunks sample sample.txt sample.txt)
     add_cli_fixture_test(onebrc_buffered_tiny_chunks rounding rounding.txt rounding.txt)
     add_cli_fixture_test(onebrc_buffered_tiny_chunks utf8_long_names utf8-long-names.txt utf8-long-names.txt)
+    foreach(thread_count IN ITEMS 1 2 4 8 24)
+        add_test(
+            NAME onebrc_parallel_sample_${thread_count}_threads
+            COMMAND ${CMAKE_COMMAND}
+                -DEXECUTABLE=$<TARGET_FILE:onebrc_parallel>
+                -DINPUT=${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/sample.txt
+                -DEXPECTED=${CMAKE_CURRENT_SOURCE_DIR}/tests/expected/sample.txt
+                -DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/test-output/onebrc-parallel-sample-${thread_count}.txt
+                -DARGUMENTS=${thread_count}
+                -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/assert_output.cmake
+        )
+    endforeach()
 
     function(add_generated_fixture_test target name input expected)
         add_test(
@@ -169,6 +183,28 @@ if(BUILD_TESTING)
             -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/assert_failure.cmake
     )
     set_tests_properties(bounded_memory_station_overflow PROPERTIES FIXTURES_REQUIRED station_overflow)
+    add_test(
+        NAME parallel_station_overflow
+        COMMAND ${CMAKE_COMMAND}
+            -DEXECUTABLE=$<TARGET_FILE:onebrc_parallel>
+            -DINPUT=${CMAKE_CURRENT_BINARY_DIR}/generated-fixtures/station-overflow.txt
+            -DARGUMENTS=4
+            -DERROR_PATTERN=station.count.exceeds.limit
+            -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/assert_failure.cmake
+    )
+    set_tests_properties(parallel_station_overflow PROPERTIES FIXTURES_REQUIRED station_overflow)
+
+    foreach(invalid_thread_count IN ITEMS 0 33)
+        add_test(
+            NAME parallel_invalid_thread_count_${invalid_thread_count}
+            COMMAND ${CMAKE_COMMAND}
+                -DEXECUTABLE=$<TARGET_FILE:onebrc_parallel>
+                -DINPUT=${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/sample.txt
+                -DARGUMENTS=${invalid_thread_count}
+                -DERROR_PATTERN=thread.count.must.be.between
+                -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/assert_failure.cmake
+        )
+    endforeach()
 
     add_test(
         NAME missing_input
@@ -239,6 +275,17 @@ if(BUILD_TESTING)
                 -DINPUT=${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/sample.txt
                 -DEXPECTED_EXIT=3
                 -DERROR_PATTERN=memory.allocation.failed
+                -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/assert_memory_limit.cmake
+        )
+        add_test(
+            NAME parallel_memory_limit_success
+            COMMAND ${CMAKE_COMMAND}
+                -DRUNNER=$<TARGET_FILE:onebrc_memory_limit>
+                -DLIMIT_MIB=64
+                -DEXECUTABLE=$<TARGET_FILE:onebrc_parallel>
+                -DINPUT=${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/sample.txt
+                -DEXPECTED_EXIT=0
+                -DEXPECTED_OUTPUT=${CMAKE_CURRENT_SOURCE_DIR}/tests/expected/sample.txt
                 -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/assert_memory_limit.cmake
         )
     endif()

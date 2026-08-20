@@ -3,6 +3,7 @@ param(
     [Parameter(Mandatory)]
     [string]$InputPath,
     [string]$Executable = (Join-Path $PSScriptRoot '..\build\onebrc_bounded_memory.exe'),
+    [string[]]$ExtraArguments = @(),
     [string]$OutputPath = (Join-Path $PSScriptRoot '..\results\memory.local.md')
 )
 
@@ -19,6 +20,9 @@ if (-not (Test-Path -LiteralPath $Executable -PathType Leaf)) {
 $startInfo = [System.Diagnostics.ProcessStartInfo]::new()
 $startInfo.FileName = $Executable
 $startInfo.ArgumentList.Add($InputPath)
+foreach ($argument in $ExtraArguments) {
+    $startInfo.ArgumentList.Add($argument)
+}
 $startInfo.UseShellExecute = $false
 $startInfo.CreateNoWindow = $true
 $startInfo.RedirectStandardOutput = $true
@@ -73,6 +77,7 @@ $markdown = @"
 - Timestamp: $timestamp
 - Executable: ``$Executable``
 - Input: ``$InputPath``
+- Extra arguments: ``$($ExtraArguments -join ' ')``
 - Input bytes: $bytes
 - Exit code: $($process.ExitCode)
 - Elapsed: $($stopwatch.Elapsed.TotalSeconds.ToString('F6', [Globalization.CultureInfo]::InvariantCulture)) seconds
