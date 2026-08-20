@@ -18,3 +18,12 @@ A warm-cache 1B run was measured with Windows process `TotalProcessorTime`. Aver
 | 32 | 3.26 | 68.05 | 20.85 | 86.9% |
 
 This supports a limited inference: execution approaches CPU/scheduler saturation by 24 threads, and raising the count to 32 adds almost no CPU occupancy. It does not prove whether parsing or hash lookup dominates. The next safe step is an isolated, byte-identical parser/hash experiment rather than more threads or a speculative SIMD rewrite.
+
+## Fixed-Branch Parser Experiment
+
+An isolated target replaced the existing validated integer parser with direct branches for the four legal temperature lengths. It passed 81 correctness tests and raw-output comparison, but did not produce a stable improvement:
+
+- 1B rows, 32 threads, seven interleaved runs: median improvement 1.65%, with the fast parser winning 5 of 7 pairs.
+- 100M rows, one thread, nine interleaved runs: median improvement 0.33%, with the fast parser winning 6 of 9 pairs.
+
+Both differences are within observed run-to-run variation. The experiment was removed rather than adding permanent parser complexity. This narrows the next investigation toward hash lookup or broader record scanning, while still requiring an isolated benchmark before any implementation is retained.
