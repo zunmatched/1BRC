@@ -12,6 +12,10 @@ This repository implements the 1 Billion Row Challenge in C++. Keep the portable
 
 Keep challenge submissions self-contained even if local test and benchmark tooling uses multiple files.
 
+## Engineering Priorities
+
+Correctness comes first, execution stability second, and speed third. Do not retain an optimization that weakens validation, introduces input-sized heap growth, or leaves resource exhaustion uncontrolled. Keep memory proportional to fixed limits such as buffer size, station count, and thread count—not row count. Update `DEVELOPMENT.md` whenever a milestone or memory contract changes.
+
 ## Build, Test, and Development Commands
 
 Use an out-of-source CMake build:
@@ -36,8 +40,8 @@ Target C++23 unless a documented optimization requires otherwise. Use four-space
 
 ## Testing Guidelines
 
-Every optimization must match the baseline byte-for-byte. Add cases for negative temperatures, rounding, UTF-8 and long station names, repeated stations, missing final newlines, and chunk boundaries. Name fixtures descriptively, such as `tests/negative-temperatures.txt`. Keep correctness tests small; performance datasets belong outside Git.
+Every optimization must match the baseline byte-for-byte. Add cases for negative temperatures, rounding, UTF-8 and long station names, repeated stations, missing final newlines, and chunk boundaries. Memory-sensitive changes also require peak-memory measurements and constrained-process success/failure tests. Name fixtures descriptively, such as `tests/negative-temperatures.txt`. Keep correctness tests small; performance datasets belong outside Git.
 
 ## Commit & Pull Request Guidelines
 
-No project history exists yet, so use concise Conventional Commits, for example `perf: add integer temperature parser` or `test: cover split-line boundaries`. Keep each commit buildable and isolate optimizations so their impact is measurable. Pull requests should describe the approach, correctness checks, benchmark methodology, before/after results, hardware details, and any portability limitations. Link relevant issues and credit techniques adapted from other 1BRC implementations.
+Use concise Conventional Commits, for example `perf: add integer temperature parser` or `test: cover split-line boundaries`. Keep each commit buildable and isolate optimizations so their impact is measurable. Pull requests should describe the approach, correctness and stability checks, benchmark methodology, before/after results, peak memory, hardware details, and any portability limitations. Link relevant issues and credit techniques adapted from other 1BRC implementations.

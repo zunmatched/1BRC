@@ -2,6 +2,8 @@
 
 A measured, incremental C++ implementation of the [1 Billion Row Challenge](https://1brc.dev/). The repository starts with a deliberately portable baseline; later optimizations must preserve byte-for-byte output and justify themselves with repeatable benchmarks.
 
+The project prioritizes **correctness first, execution stability second, and performance third**. In particular, heap usage must remain bounded independently of input size, and resource-exhaustion failures must be deterministic and diagnosable. See [DEVELOPMENT.md](DEVELOPMENT.md) for milestones and acceptance criteria.
+
 ## Requirements
 
 - Windows 10/11
@@ -80,7 +82,9 @@ The script performs one unmeasured warm-up, reports the median and MiB/s, captur
 2. Integer parser: replace general numeric parsing while retaining the baseline allocation behavior.
 3. No-row-allocation lookup: remove temporary substrings and copy station names only once.
 4. I/O comparison: stream through a 4 MiB buffer or use Windows file mapping.
-5. Add newline-safe chunking and thread-local aggregation.
-6. Use profiler evidence to evaluate a custom hash table, branch reduction, or SIMD.
+5. Establish a bounded-memory contract, measure peak memory, and test controlled allocation failure.
+6. Run the complete 1B dataset with the single-threaded stable implementation.
+7. Add newline-safe chunking and thread-local aggregation under an explicit total memory budget.
+8. Use profiler evidence to evaluate a custom hash table, branch reduction, or SIMD.
 
-Each version must pass the baseline fixture and differential tests before its performance is reported. Benchmark results from different hardware are not directly comparable.
+Each version must pass correctness, bounded-memory, and failure-behavior checks before its performance is reported. Benchmark results from different hardware are not directly comparable.
