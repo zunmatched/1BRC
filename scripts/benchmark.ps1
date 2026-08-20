@@ -47,7 +47,20 @@ $bytes = (Get-Item -LiteralPath $InputPath).Length
 $throughput = $bytes / $median / 1MB
 $cpu = (Get-CimInstance Win32_Processor -ErrorAction SilentlyContinue | Select-Object -First 1 -ExpandProperty Name)
 $memoryBytes = (Get-CimInstance Win32_ComputerSystem -ErrorAction SilentlyContinue).TotalPhysicalMemory
-if ([string]::IsNullOrWhiteSpace($cpu)) { $cpu = 'unknown' }
+if ([string]::IsNullOrWhiteSpace($cpu)) {
+    $cpu = Get-ItemPropertyValue `
+        -LiteralPath 'Registry::HKEY_LOCAL_MACHINE\HARDWARE\DESCRIPTION\System\CentralProcessor\0' `
+        -Name ProcessorNameString -ErrorAction SilentlyContinue
+}
+if (-not $memoryBytes) {
+    try {
+        Add-Type -AssemblyName Microsoft.VisualBasic
+        $memoryBytes = ([Microsoft.VisualBasic.Devices.ComputerInfo]::new()).TotalPhysicalMemory
+    } catch {
+        $memoryBytes = $null
+    }
+}
+if ([string]::IsNullOrWhiteSpace($cpu)) { $cpu = 'unknown' } else { $cpu = $cpu.Trim() }
 $memoryGiB = if ($memoryBytes) { [Math]::Round($memoryBytes / 1GB, 1) } else { 'unknown' }
 $timestamp = Get-Date -Format 'yyyy-MM-dd HH:mm:ss K'
 $sampleText = ($samples | ForEach-Object { $_.ToString('F6', [Globalization.CultureInfo]::InvariantCulture) }) -join ', '
@@ -65,6 +78,7 @@ $markdown = @"
 - Median: $($median.ToString('F6', [Globalization.CultureInfo]::InvariantCulture)) seconds
 - Throughput: $($throughput.ToString('F2', [Globalization.CultureInfo]::InvariantCulture)) MiB/s
 - CPU: $cpu
+- Logical processors: $env:NUMBER_OF_PROCESSORS
 - RAM: $memoryGiB GiB
 - PowerShell: $($PSVersionTable.PSVersion)
 

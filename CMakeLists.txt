@@ -9,9 +9,11 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 add_executable(onebrc_baseline src/baseline.cpp)
 add_executable(onebrc_integer_parser src/baseline.cpp)
 target_compile_definitions(onebrc_integer_parser PRIVATE ONEBRC_INTEGER_PARSER=1)
+add_executable(onebrc_no_row_allocations src/baseline.cpp)
+target_compile_definitions(onebrc_no_row_allocations PRIVATE ONEBRC_INTEGER_PARSER=1 ONEBRC_NO_ROW_ALLOCATIONS=1)
 add_executable(onebrc_generate tools/generate.cpp)
 
-foreach(target IN ITEMS onebrc_baseline onebrc_integer_parser onebrc_generate)
+foreach(target IN ITEMS onebrc_baseline onebrc_integer_parser onebrc_no_row_allocations onebrc_generate)
     if(MSVC)
         target_compile_options(${target} PRIVATE /W4 /permissive-)
     else()
@@ -37,7 +39,8 @@ if(BUILD_TESTING)
         )
     endfunction()
 
-    foreach(target IN ITEMS onebrc_baseline onebrc_integer_parser)
+    set(solution_targets onebrc_baseline onebrc_integer_parser onebrc_no_row_allocations)
+    foreach(target IN LISTS solution_targets)
         add_cli_fixture_test(${target} sample sample.txt sample.txt)
         add_cli_fixture_test(${target} rounding rounding.txt rounding.txt)
         add_cli_fixture_test(${target} utf8_long_names utf8-long-names.txt utf8-long-names.txt)
@@ -56,7 +59,7 @@ if(BUILD_TESTING)
         )
     endfunction()
 
-    foreach(target IN ITEMS onebrc_baseline onebrc_integer_parser)
+    foreach(target IN LISTS solution_targets)
         add_generated_fixture_test(${target} no_final_newline no-final-newline.txt no-final-newline.txt)
         add_generated_fixture_test(${target} crlf crlf.txt crlf.txt)
     endforeach()
@@ -78,6 +81,13 @@ if(BUILD_TESTING)
         NAME integer_parser_invalid_record
         COMMAND ${CMAKE_COMMAND}
             -DEXECUTABLE=$<TARGET_FILE:onebrc_integer_parser>
+            -DINPUT=${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/invalid-record.txt
+            -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/assert_failure.cmake
+    )
+    add_test(
+        NAME no_row_allocations_invalid_record
+        COMMAND ${CMAKE_COMMAND}
+            -DEXECUTABLE=$<TARGET_FILE:onebrc_no_row_allocations>
             -DINPUT=${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/invalid-record.txt
             -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/assert_failure.cmake
     )

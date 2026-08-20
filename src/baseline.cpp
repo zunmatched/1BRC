@@ -33,8 +33,30 @@ struct Stats {
     }
 };
 
-[[nodiscard]] std::int32_t parse_temperature(const std::string& text, std::uint64_t line_number) {
+#ifdef ONEBRC_NO_ROW_ALLOCATIONS
+struct TransparentStringHash {
+    using is_transparent = void;
+
+    [[nodiscard]] std::size_t operator()(std::string_view value) const noexcept {
+        return std::hash<std::string_view>{}(value);
+    }
+};
+
+struct TransparentStringEqual {
+    using is_transparent = void;
+
+    [[nodiscard]] bool operator()(std::string_view left, std::string_view right) const noexcept {
+        return left == right;
+    }
+};
+
+using StationMap = std::unordered_map<std::string, Stats, TransparentStringHash, TransparentStringEqual>;
+#else
+using StationMap = std::unordered_map<std::string, Stats>;
+#endif
+
 #ifdef ONEBRC_INTEGER_PARSER
+[[nodiscard]] std::int32_t parse_temperature(std::string_view text, std::uint64_t line_number) {
     const auto invalid = [line_number]() {
         throw std::runtime_error("invalid temperature on line " + std::to_string(line_number));
     };
@@ -67,7 +89,9 @@ struct Stats {
         invalid();
     }
     return negative ? -value : value;
+}
 #else
+[[nodiscard]] std::int32_t parse_temperature(const std::string& text, std::uint64_t line_number) {
     std::size_t parsed = 0;
     double value = 0.0;
     try {
@@ -82,8 +106,8 @@ struct Stats {
         throw std::runtime_error("invalid temperature on line " + std::to_string(line_number));
     }
     return static_cast<std::int32_t>(std::llround(value * 10.0));
-#endif
 }
+#endif
 
 [[nodiscard]] std::int64_t rounded_mean_tenths(const Stats& stats) {
     // The canonical 1BRC rule is equivalent to Java Math.round(): floor(x + 0.5).
@@ -113,7 +137,7 @@ int run(const std::string& input_path) {
         return 2;
     }
 
-    std::unordered_map<std::string, Stats> stations;
+    StationMap stations;
     stations.reserve(512);
 
     std::string line;
@@ -130,8 +154,19 @@ int run(const std::string& input_path) {
             throw std::runtime_error("invalid record on line " + std::to_string(line_number));
         }
 
+#ifdef ONEBRC_NO_ROW_ALLOCATIONS
+        const std::string_view line_view(line);
+        const auto temperature = parse_temperature(line_view.substr(separator + 1), line_number);
+        const auto station_name = line_view.substr(0, separator);
+        auto station = stations.find(station_name);
+        if (station == stations.end()) {
+            station = stations.emplace(std::string(station_name), Stats{}).first;
+        }
+        station->second.add(temperature);
+#else
         const auto temperature = parse_temperature(line.substr(separator + 1), line_number);
         stations[line.substr(0, separator)].add(temperature);
+#endif
     }
     if (input.bad()) {
         throw std::runtime_error("failed while reading input file");

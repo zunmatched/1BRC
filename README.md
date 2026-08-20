@@ -32,6 +32,12 @@ The CLI accepts exactly one input path and writes only the canonical result to s
 .\build\onebrc_integer_parser.exe .\tests\fixtures\sample.txt
 ```
 
+`onebrc_no_row_allocations.exe` additionally uses `string_view` parsing and heterogeneous hash lookup. Temperature substrings are never allocated, and a station name is copied only on its first occurrence:
+
+```powershell
+.\build\onebrc_no_row_allocations.exe .\tests\fixtures\sample.txt
+```
+
 Input records are UTF-8 `station;temperature` lines. Temperatures range from `-99.9` to `99.9`; aggregates are stored as integer tenths and stations are sorted by UTF-8 bytes. Errors go to stderr with a non-zero exit code.
 
 ## Generate datasets
@@ -63,7 +69,7 @@ The script performs one unmeasured warm-up, reports the median and MiB/s, captur
 
 1. Baseline: `getline`, standard parsing, and `unordered_map`.
 2. Integer parser: replace general numeric parsing while retaining the baseline allocation behavior.
-3. Remove per-row allocations and temporary substrings.
+3. No-row-allocation lookup: remove temporary substrings and copy station names only once.
 4. Compare buffered I/O with Windows file mapping.
 5. Add newline-safe chunking and thread-local aggregation.
 6. Use profiler evidence to evaluate a custom hash table, branch reduction, or SIMD.
