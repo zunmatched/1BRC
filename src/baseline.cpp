@@ -77,7 +77,117 @@ struct TransparentStringEqual {
     }
 };
 
+#ifdef ONEBRC_FLAT_STATION_MAP
+class FlatStationMap {
+public:
+    using value_type = std::pair<std::string, Stats>;
+
+private:
+    static constexpr std::size_t slot_count = 16'384;
+    static_assert((slot_count & (slot_count - 1)) == 0);
+    static_assert(maximum_station_count < slot_count);
+
+    template <typename UnderlyingIterator>
+    class BasicIterator {
+    public:
+        BasicIterator(UnderlyingIterator current, UnderlyingIterator end, bool skip_empty_slots = true)
+            : current_(current), end_(end) {
+            if (skip_empty_slots) {
+                skip_empty();
+            }
+        }
+
+        decltype(auto) operator*() const { return *current_; }
+        auto operator->() const { return &*current_; }
+
+        BasicIterator& operator++() {
+            ++current_;
+            skip_empty();
+            return *this;
+        }
+
+        friend bool operator==(const BasicIterator&, const BasicIterator&) = default;
+
+    private:
+        void skip_empty() {
+            while (current_ != end_ && current_->first.empty()) {
+                ++current_;
+            }
+        }
+
+        UnderlyingIterator current_;
+        UnderlyingIterator end_;
+    };
+
+public:
+    using iterator = BasicIterator<std::vector<value_type>::iterator>;
+    using const_iterator = BasicIterator<std::vector<value_type>::const_iterator>;
+
+    FlatStationMap() : slots_(slot_count) {}
+
+    void max_load_factor(float) noexcept {}
+    void reserve(std::size_t) noexcept {}
+    [[nodiscard]] std::size_t size() const noexcept { return size_; }
+
+    [[nodiscard]] iterator begin() { return iterator(slots_.begin(), slots_.end()); }
+    [[nodiscard]] iterator end() { return iterator(slots_.end(), slots_.end()); }
+    [[nodiscard]] const_iterator begin() const { return const_iterator(slots_.begin(), slots_.end()); }
+    [[nodiscard]] const_iterator end() const { return const_iterator(slots_.end(), slots_.end()); }
+
+    [[nodiscard]] iterator find(std::string_view name) {
+        const auto slot = find_slot(name);
+        return slot->first.empty() ? end() : iterator(slot, slots_.end(), false);
+    }
+
+    [[nodiscard]] const_iterator find(std::string_view name) const {
+        const auto slot = find_slot(name);
+        return slot->first.empty() ? end() : const_iterator(slot, slots_.end(), false);
+    }
+
+    std::pair<iterator, bool> emplace(std::string name, Stats stats) {
+        auto slot = find_slot(name);
+        if (slot->first.empty()) {
+            *slot = value_type(std::move(name), stats);
+            ++size_;
+            return {iterator(slot, slots_.end(), false), true};
+        }
+        return {iterator(slot, slots_.end(), false), false};
+    }
+
+private:
+    [[nodiscard]] static std::size_t hash(std::string_view value) noexcept {
+        std::uint64_t result = 14'695'981'039'346'656'037ULL;
+        for (const unsigned char character : value) {
+            result ^= character;
+            result *= 1'099'511'628'211ULL;
+        }
+        return static_cast<std::size_t>(result);
+    }
+
+    [[nodiscard]] std::vector<value_type>::iterator find_slot(std::string_view name) {
+        auto index = hash(name) & (slot_count - 1);
+        while (!slots_[index].first.empty() && slots_[index].first != name) {
+            index = (index + 1) & (slot_count - 1);
+        }
+        return slots_.begin() + static_cast<std::ptrdiff_t>(index);
+    }
+
+    [[nodiscard]] std::vector<value_type>::const_iterator find_slot(std::string_view name) const {
+        auto index = hash(name) & (slot_count - 1);
+        while (!slots_[index].first.empty() && slots_[index].first != name) {
+            index = (index + 1) & (slot_count - 1);
+        }
+        return slots_.begin() + static_cast<std::ptrdiff_t>(index);
+    }
+
+    std::vector<value_type> slots_;
+    std::size_t size_ = 0;
+};
+
+using StationMap = FlatStationMap;
+#else
 using StationMap = std::unordered_map<std::string, Stats, TransparentStringHash, TransparentStringEqual>;
+#endif
 #else
 using StationMap = std::unordered_map<std::string, Stats>;
 #endif

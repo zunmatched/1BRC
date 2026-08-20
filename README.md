@@ -65,6 +65,14 @@ The Windows parallel target accepts an optional thread count from 1 to 32; other
 
 It moves each nominal range boundary to the next newline, uses one fixed 256 KiB buffer and private aggregate table per worker, performs no locking in the hot loop, and merges once after all `std::jthread` workers finish. The existing single-threaded targets remain unchanged as correctness and performance references.
 
+`onebrc_parallel_flat_map.exe` isolates the station-table optimization. It replaces node-based `std::unordered_map` storage with a fixed 16,384-slot open-addressing table while retaining the parallel parser and I/O path:
+
+```powershell
+.\build\onebrc_parallel_flat_map.exe .\data\measurements-1b-random.txt 32
+```
+
+The fixed capacity covers the 10,000-station contract at a maximum 61% load. It trades additional bounded memory for cache-local lookup; 32-thread worst-case measurements remain below the project's 64 MiB process budget.
+
 Input records are UTF-8 `station;temperature` lines. Temperatures range from `-99.9` to `99.9`; aggregates are stored as integer tenths and stations are sorted by UTF-8 bytes. Errors go to stderr with a non-zero exit code.
 
 ## Generate datasets

@@ -20,6 +20,8 @@ if(WIN32)
     target_compile_definitions(onebrc_mmap PRIVATE ONEBRC_INTEGER_PARSER=1 ONEBRC_NO_ROW_ALLOCATIONS=1 ONEBRC_MMAP=1)
     add_executable(onebrc_parallel src/baseline.cpp)
     target_compile_definitions(onebrc_parallel PRIVATE ONEBRC_INTEGER_PARSER=1 ONEBRC_NO_ROW_ALLOCATIONS=1 ONEBRC_BOUNDED_MEMORY=1 ONEBRC_PARALLEL=1)
+    add_executable(onebrc_parallel_flat_map src/baseline.cpp)
+    target_compile_definitions(onebrc_parallel_flat_map PRIVATE ONEBRC_INTEGER_PARSER=1 ONEBRC_NO_ROW_ALLOCATIONS=1 ONEBRC_BOUNDED_MEMORY=1 ONEBRC_PARALLEL=1 ONEBRC_FLAT_STATION_MAP=1)
 endif()
 add_executable(onebrc_generate tools/generate.cpp)
 if(WIN32)
@@ -28,7 +30,7 @@ endif()
 
 set(solution_targets onebrc_baseline onebrc_integer_parser onebrc_no_row_allocations onebrc_buffered_io onebrc_bounded_memory)
 if(WIN32)
-    list(APPEND solution_targets onebrc_mmap onebrc_parallel)
+    list(APPEND solution_targets onebrc_mmap onebrc_parallel onebrc_parallel_flat_map)
 endif()
 
 foreach(target IN LISTS solution_targets)
@@ -193,6 +195,16 @@ if(BUILD_TESTING)
             -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/assert_failure.cmake
     )
     set_tests_properties(parallel_station_overflow PROPERTIES FIXTURES_REQUIRED station_overflow)
+    add_test(
+        NAME parallel_flat_map_station_overflow
+        COMMAND ${CMAKE_COMMAND}
+            -DEXECUTABLE=$<TARGET_FILE:onebrc_parallel_flat_map>
+            -DINPUT=${CMAKE_CURRENT_BINARY_DIR}/generated-fixtures/station-overflow.txt
+            -DARGUMENTS=4
+            -DERROR_PATTERN=station.count.exceeds.limit
+            -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/assert_failure.cmake
+    )
+    set_tests_properties(parallel_flat_map_station_overflow PROPERTIES FIXTURES_REQUIRED station_overflow)
 
     foreach(invalid_thread_count IN ITEMS 0 33)
         add_test(
@@ -283,6 +295,17 @@ if(BUILD_TESTING)
                 -DRUNNER=$<TARGET_FILE:onebrc_memory_limit>
                 -DLIMIT_MIB=64
                 -DEXECUTABLE=$<TARGET_FILE:onebrc_parallel>
+                -DINPUT=${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/sample.txt
+                -DEXPECTED_EXIT=0
+                -DEXPECTED_OUTPUT=${CMAKE_CURRENT_SOURCE_DIR}/tests/expected/sample.txt
+                -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/assert_memory_limit.cmake
+        )
+        add_test(
+            NAME parallel_flat_map_memory_limit_success
+            COMMAND ${CMAKE_COMMAND}
+                -DRUNNER=$<TARGET_FILE:onebrc_memory_limit>
+                -DLIMIT_MIB=64
+                -DEXECUTABLE=$<TARGET_FILE:onebrc_parallel_flat_map>
                 -DINPUT=${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/sample.txt
                 -DEXPECTED_EXIT=0
                 -DEXPECTED_OUTPUT=${CMAKE_CURRENT_SOURCE_DIR}/tests/expected/sample.txt

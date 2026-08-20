@@ -20,6 +20,7 @@ Input size must not determine heap size. Implementations may stream or map the i
 - Complete 1B validation: byte-identical output against the portable baseline with 5.05 MiB peak committed memory.
 - Bounded parallel aggregation with newline-safe ranges, fixed 256 KiB worker buffers, private maps, and a single final merge.
 - Parallel 1B validation at 24 threads: byte-identical output, 14.52 MiB peak working set, and 10.58 MiB peak committed memory.
+- Fixed-capacity open-addressing station table: 10.18% faster 1B median at 32 threads while remaining below 64 MiB on random and 10,000-key distributions.
 
 ## Current: Memory Resilience
 
@@ -46,8 +47,8 @@ The parallel target caps execution at 32 threads. Its resident working set is bo
 
 Next milestones:
 
-1. Use controlled parser/hash experiments to separate their costs; process counters show CPU occupancy saturating near 21 of 24 logical cores at 24–32 threads.
-2. Evaluate a custom hash table, branch reduction, or SIMD only when an isolated experiment identifies the relevant bottleneck.
+1. Repeat the retained flat-table benchmark and memory checks after future hot-loop changes.
+2. Evaluate broader record scanning or SIMD only through isolated, byte-identical experiments.
 3. Produce the final architecture explanation, limitations, and résumé-ready results.
 
 Every milestone is committed separately and must include correctness tests, stability evidence, and same-machine before/after measurements.

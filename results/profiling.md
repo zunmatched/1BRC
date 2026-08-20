@@ -27,3 +27,13 @@ An isolated target replaced the existing validated integer parser with direct br
 - 100M rows, one thread, nine interleaved runs: median improvement 0.33%, with the fast parser winning 6 of 9 pairs.
 
 Both differences are within observed run-to-run variation. The experiment was removed rather than adding permanent parser complexity. This narrows the next investigation toward hash lookup or broader record scanning, while still requiring an isolated benchmark before any implementation is retained.
+
+## Open-Addressing Station Table
+
+The next isolated target replaced `std::unordered_map` with a fixed 16,384-slot table using FNV-1a hashing and linear probing. Parser, range I/O, threading, and merge behavior remained unchanged. Seven interleaved 1B runs at 32 threads produced these medians:
+
+- `std::unordered_map`: 3.335033 seconds;
+- fixed flat table: 2.995485 seconds;
+- improvement: 10.18%, with the flat table winning all seven paired runs.
+
+The target passed the complete CTest suite, raw 1B output comparison, and a 10M dataset exercising all 10,000 keys. At 32 threads, the 1B random input used 43.05 MiB peak working set and 39.36 MiB peak committed memory. The 10,000-key distribution used 43.07 MiB and 39.39 MiB respectively, and also completed inside a 64 MiB Job limit. The optimization is retained because its repeatable speedup fits the explicit memory budget; the original parallel target remains available as the lower-memory reference.

@@ -49,7 +49,7 @@ function Invoke-Solution {
     $outputTask = $process.StandardOutput.BaseStream.CopyToAsync($outputBuffer)
     $errorTask = $process.StandardError.ReadToEndAsync()
     $process.WaitForExit()
-    $outputTask.GetAwaiter().GetResult()
+    $null = $outputTask.GetAwaiter().GetResult()
     $standardError = $errorTask.GetAwaiter().GetResult()
     $stopwatch.Stop()
     if ($process.ExitCode -ne 0) {
