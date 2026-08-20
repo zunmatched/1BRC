@@ -43,7 +43,7 @@ Acceptance requires no uncaught allocation failures, no input-sized heap allocat
 
 ## Current: Parallel Scaling
 
-The parallel target caps execution at 32 threads. Its resident working set is bounded by fixed per-thread buffers and station tables rather than input size. CTest exercises explicit thread counts, partition boundaries, propagated worker failures, the global station limit, and execution under a 64 MiB Job limit.
+`onebrc_parallel` is the primary target: it uses `std::unordered_map`, keeps committed memory low, and caps execution at 32 threads. `onebrc_parallel_flat_map` is an optional acceleration target for users who explicitly accept a larger fixed memory footprint. Both targets bound memory by thread count, fixed worker buffers, and station capacity rather than input size. CTest exercises explicit thread counts, partition boundaries, propagated worker failures, the global station limit, and execution under a 64 MiB Job limit.
 
 Next milestones:
 

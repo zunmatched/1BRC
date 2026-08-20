@@ -57,7 +57,7 @@ The buffered target streams through a 4 MiB buffer and preserves partial records
 
 The bound is enforced, not merely reserved: a 10,001st unique station is rejected before another map allocation. Mean rounding is performed with exact integer arithmetic, including negative half ties toward positive infinity.
 
-The Windows parallel target accepts an optional thread count from 1 to 32; otherwise it uses the detected hardware concurrency, capped at 32:
+`onebrc_parallel.exe` is the primary production target. It favors the standard-library station table and lower committed memory while retaining bounded parallel execution. It accepts an optional thread count from 1 to 32; otherwise it uses the detected hardware concurrency, capped at 32:
 
 ```powershell
 .\build\onebrc_parallel.exe .\data\measurements-100m-random.txt 24
@@ -65,13 +65,13 @@ The Windows parallel target accepts an optional thread count from 1 to 32; other
 
 It moves each nominal range boundary to the next newline, uses one fixed 256 KiB buffer and private aggregate table per worker, performs no locking in the hot loop, and merges once after all `std::jthread` workers finish. The existing single-threaded targets remain unchanged as correctness and performance references.
 
-`onebrc_parallel_flat_map.exe` isolates the station-table optimization. It replaces node-based `std::unordered_map` storage with a fixed 16,384-slot open-addressing table while retaining the parallel parser and I/O path:
+`onebrc_parallel_flat_map.exe` is an opt-in acceleration target. It replaces node-based `std::unordered_map` storage with a fixed 16,384-slot open-addressing table while retaining the parallel parser and I/O path:
 
 ```powershell
 .\build\onebrc_parallel_flat_map.exe .\data\measurements-1b-random.txt 32
 ```
 
-The fixed capacity covers the 10,000-station contract at a maximum 61% load. It trades additional bounded memory for cache-local lookup; 32-thread worst-case measurements remain below the project's 64 MiB process budget.
+The fixed capacity covers the 10,000-station contract at a maximum 61% load. Use it only when the roughly 10% measured speedup justifies increasing peak committed memory from about 10.58 MiB to 39.36 MiB. Both targets remain bounded and under the project's 64 MiB process budget.
 
 Input records are UTF-8 `station;temperature` lines. Temperatures range from `-99.9` to `99.9`; aggregates are stored as integer tenths and stations are sorted by UTF-8 bytes. Errors go to stderr with a non-zero exit code.
 
