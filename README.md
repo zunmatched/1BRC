@@ -14,6 +14,8 @@ The project prioritizes **correctness first, execution stability second, and per
 
 No external C++ or test libraries are required.
 
+For project-specific interview preparation, see [INTERVIEW_QA.md](INTERVIEW_QA.md). It covers correctness, bounded memory, parallel partitioning, benchmark methodology, rejected optimizations, and design tradeoffs.
+
 ## Build and test
 
 ```powershell
