@@ -1,0 +1,7 @@
+Negative;-0.1
+Negative;-0.2
+NegativeTie;-0.1
+NegativeTie;0.0
+PositiveTie;0.0
+PositiveTie;0.1
+Zero;0.0

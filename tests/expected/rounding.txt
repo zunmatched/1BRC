@@ -1,0 +1,1 @@
+{Negative=-0.2/-0.1/-0.1, NegativeTie=-0.1/0.0/0.0, PositiveTie=0.0/0.1/0.1, Zero=0.0/0.0/0.0}

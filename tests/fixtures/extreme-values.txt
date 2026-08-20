@@ -1,0 +1,5 @@
+Maximum;99.9
+Minimum;-99.9
+Repeated;-99.9
+Repeated;99.9
+Repeated;0.0

@@ -1,0 +1,8 @@
+/build/
+/data/
+/benchmark-output/
+/results/*.local.md
+*.exe
+*.pdb
+measurements.txt
+
